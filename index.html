@@ -1,0 +1,1289 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Reality.ly | نظام التحكم العصبي الجغرافي</title>
+    
+    <!-- Three.js & OrbitControls -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    
+    <!-- MediaPipe Hands for Neural Control -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Cairo:wght@300;600;900&display=swap" rel="stylesheet">
+
+    <style>
+        :root {
+            --neon-cyan: #00f3ff;
+            --neon-magenta: #ff0055;
+            --neon-green: #39ff14;
+            --bg-dark: #020208;
+            --panel-bg: rgba(6, 6, 20, 0.85);
+            --border-glow: rgba(0, 243, 255, 0.3);
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            user-select: none;
+        }
+
+        body {
+            background-color: var(--bg-dark);
+            color: #ffffff;
+            font-family: 'Cairo', 'Orbitron', sans-serif;
+            overflow: hidden;
+            height: 100vh;
+            width: 100vw;
+        }
+
+        #webgl-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+        }
+
+        /* HUD & UI Layer */
+        .hud-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 10;
+            pointer-events: none;
+            display: grid;
+            grid-template-columns: 350px 1fr 380px;
+            grid-template-rows: 80px 1fr 100px;
+            padding: 20px;
+            gap: 20px;
+        }
+
+        .interactive {
+            pointer-events: auto;
+        }
+
+        /* Glassmorphism Panel Style */
+        .panel {
+            background: var(--panel-bg);
+            border: 1px solid var(--neon-cyan);
+            box-shadow: 0 0 15px var(--border-glow);
+            border-radius: 12px;
+            padding: 15px;
+            backdrop-filter: blur(10px);
+            transition: all 0.3s ease;
+        }
+
+        .panel:hover {
+            box-shadow: 0 0 25px rgba(0, 243, 255, 0.5);
+            border-color: var(--neon-cyan);
+        }
+
+        /* Header */
+        header {
+            grid-column: 1 / -1;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            height: 100%;
+        }
+
+        .logo-container {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .logo-text {
+            font-size: 24px;
+            font-weight: 900;
+            letter-spacing: 2px;
+            background: linear-gradient(45deg, var(--neon-cyan), var(--neon-magenta));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            text-shadow: 0 0 10px rgba(0, 243, 255, 0.3);
+        }
+
+        .status-badge {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 11px;
+            padding: 4px 10px;
+            border-radius: 20px;
+            background: rgba(0, 243, 255, 0.1);
+            border: 1px solid var(--neon-cyan);
+            color: var(--neon-cyan);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            text-transform: uppercase;
+        }
+
+        .status-badge.active {
+            border-color: var(--neon-green);
+            color: var(--neon-green);
+            box-shadow: 0 0 10px rgba(57, 255, 20, 0.3);
+        }
+
+        .pulse-dot {
+            width: 8px;
+            height: 8px;
+            background-color: currentColor;
+            border-radius: 50%;
+            animation: pulse 1.5s infinite;
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(0.8); opacity: 0.5; }
+            50% { transform: scale(1.2); opacity: 1; }
+            100% { transform: scale(0.8); opacity: 0.5; }
+        }
+
+        /* Left Sidebar: Controls & Map Clipper */
+        .sidebar-left {
+            grid-column: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            height: 100%;
+        }
+
+        .section-title {
+            font-size: 16px;
+            font-weight: 700;
+            color: var(--neon-cyan);
+            margin-bottom: 12px;
+            border-bottom: 1px solid rgba(0, 243, 255, 0.2);
+            padding-bottom: 5px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .country-list {
+            flex-grow: 1;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            padding-right: 5px;
+        }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: rgba(255,255,255,0.05);
+        }
+        ::-webkit-scrollbar-thumb {
+            background: var(--neon-cyan);
+            border-radius: 3px;
+        }
+
+        .country-card {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            padding: 12px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .country-card:hover {
+            background: rgba(0, 243, 255, 0.08);
+            border-color: var(--neon-cyan);
+            transform: translateY(-2px);
+        }
+
+        .country-card.selected {
+            border-color: var(--neon-magenta);
+            background: rgba(255, 0, 85, 0.08);
+        }
+
+        .country-card h4 {
+            font-size: 14px;
+            margin-bottom: 4px;
+            color: #fff;
+        }
+
+        .country-card p {
+            font-size: 11px;
+            color: #aaa;
+        }
+
+        .clip-btn {
+            width: 100%;
+            background: linear-gradient(135deg, var(--neon-cyan), #0088ff);
+            border: none;
+            color: #000;
+            padding: 12px;
+            font-family: 'Cairo', sans-serif;
+            font-weight: 900;
+            font-size: 15px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s;
+            box-shadow: 0 4px 15px rgba(0, 243, 255, 0.4);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .clip-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(0, 243, 255, 0.6);
+            background: linear-gradient(135deg, #00ffff, #00a2ff);
+        }
+
+        .clip-btn:active {
+            transform: translateY(1px);
+        }
+
+        /* Right Sidebar: Neural Interface & Camera */
+        .sidebar-right {
+            grid-column: 3;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            height: 100%;
+        }
+
+        .camera-container {
+            position: relative;
+            width: 100%;
+            height: 200px;
+            border-radius: 8px;
+            overflow: hidden;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            background: #000;
+        }
+
+        #webcam {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transform: scaleX(-1); /* Mirror view */
+        }
+
+        #hand-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            transform: scaleX(-1);
+            pointer-events: none;
+        }
+
+        .neural-stats {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            font-size: 12px;
+        }
+
+        .stat-box {
+            background: rgba(255,255,255,0.02);
+            border: 1px solid rgba(255,255,255,0.05);
+            padding: 10px;
+            border-radius: 6px;
+            text-align: center;
+        }
+
+        .stat-box span {
+            display: block;
+            font-size: 10px;
+            color: #888;
+            margin-bottom: 4px;
+        }
+
+        .stat-box strong {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 14px;
+            color: var(--neon-cyan);
+        }
+
+        /* Bottom Inventory / Archipelago Configurator */
+        footer {
+            grid-column: 1 / -1;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            height: 100%;
+        }
+
+        .inventory-slots {
+            display: flex;
+            gap: 12px;
+            overflow-x: auto;
+            flex-grow: 1;
+            margin-right: 20px;
+            padding: 5px;
+        }
+
+        .inventory-slot {
+            width: 70px;
+            height: 70px;
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px dashed rgba(0, 243, 255, 0.3);
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            position: relative;
+            transition: all 0.2s;
+            flex-shrink: 0;
+        }
+
+        .inventory-slot:hover {
+            border-color: var(--neon-cyan);
+            background: rgba(0, 243, 255, 0.05);
+        }
+
+        .inventory-slot.filled {
+            border-style: solid;
+            border-color: var(--neon-magenta);
+            background: rgba(255, 0, 85, 0.05);
+        }
+
+        .slot-thumbnail {
+            width: 80%;
+            height: 80%;
+            pointer-events: none;
+        }
+
+        /* Custom Neural Cursor */
+        #neural-cursor {
+            position: fixed;
+            width: 30px;
+            height: 30px;
+            border: 2px solid var(--neon-cyan);
+            border-radius: 50%;
+            pointer-events: none;
+            z-index: 10000;
+            transform: translate(-50%, -50%);
+            transition: width 0.1s, height 0.1s, background-color 0.1s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 0 10px var(--neon-cyan);
+        }
+
+        #neural-cursor::after {
+            content: '';
+            width: 6px;
+            height: 6px;
+            background-color: var(--neon-cyan);
+            border-radius: 50%;
+        }
+
+        #neural-cursor.grabbing {
+            width: 15px;
+            height: 15px;
+            border-color: var(--neon-magenta);
+            background-color: rgba(255, 0, 85, 0.3);
+            box-shadow: 0 0 15px var(--neon-magenta);
+        }
+
+        #neural-cursor.grabbing::after {
+            background-color: var(--neon-magenta);
+        }
+
+        /* Instructive Overlay */
+        .instruction-toast {
+            position: absolute;
+            top: 100px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.8);
+            border: 1px solid var(--neon-cyan);
+            padding: 10px 20px;
+            border-radius: 30px;
+            font-size: 14px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            animation: bounce 2s infinite;
+            z-index: 100;
+            pointer-events: none;
+            box-shadow: 0 0 15px rgba(0,243,255,0.2);
+        }
+
+        @keyframes bounce {
+            0%, 100% { transform: translateX(-50%) translateY(0); }
+            50% { transform: translateX(-50%) translateY(-10px); }
+        }
+
+        /* Fallback Controller Warning */
+        .fallback-banner {
+            background: rgba(255, 165, 0, 0.15);
+            border: 1px solid orange;
+            color: orange;
+            padding: 5px 10px;
+            border-radius: 4px;
+            font-size: 11px;
+            margin-top: 10px;
+            display: none;
+        }
+
+        .help-tooltip {
+            font-size: 11px;
+            color: #888;
+            line-height: 1.6;
+            margin-top: 5px;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="neural-cursor"></div>
+
+    <div id="webgl-container"></div>
+
+    <div class="hud-overlay">
+        <!-- Header -->
+        <header class="panel interactive">
+            <div class="logo-container">
+                <span class="logo-text">REALITY.LY</span>
+                <div class="status-badge" id="neural-status">
+                    <div class="pulse-dot"></div>
+                    <span>محاكاة الفأرة نشطة</span>
+                </div>
+            </div>
+            <div style="font-size: 14px; font-weight: bold; color: var(--neon-cyan);">
+                أرخبيل السيادة الرقمية الجغرافية
+            </div>
+        </header>
+
+        <!-- Left Panel: Map Clipping & Selection -->
+        <div class="sidebar-left panel interactive">
+            <div class="section-title">
+                <span>مستخرج الأراضي الجغرافية</span>
+                <span style="font-size: 10px; color: var(--neon-magenta);">OSM Vector v2.1</span>
+            </div>
+            
+            <p style="font-size: 12px; color: #ccc; margin-bottom: 10px;">
+                اختر منطقة جغرافية حقيقية لقصها وتحويلها إلى أصل رقمي عائم في أرخبيلك الخاص.
+            </p>
+
+            <div class="country-list" id="country-list">
+                <!-- Dynamically populated -->
+            </div>
+
+            <button class="clip-btn" id="clip-btn">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"></path><line x1="3" y1="6" x2="21" y2="6"></line><path d="M16 10a4 4 0 0 1-8 0"></path></svg>
+                قص الأرض المحددة
+            </button>
+        </div>
+
+        <!-- Center dynamic notification -->
+        <div class="instruction-toast" id="instruction">
+            <span style="color: var(--neon-cyan);">💡 تلميح:</span>
+            <span id="instruction-text">انقر على أي دولة في القائمة، ثم اضغط "قص الأرض" لبدء البناء!</span>
+        </div>
+
+        <!-- Right Panel: Neural Tracking & Controls -->
+        <div class="sidebar-right panel interactive">
+            <div class="section-title">
+                <span>التحكم العصبي الحركي</span>
+                <span style="font-size: 10px; color: var(--neon-green);">LIVE FEED</span>
+            </div>
+
+            <div class="camera-container">
+                <video id="webcam" autoplay playsinline></video>
+                <canvas id="hand-canvas"></canvas>
+            </div>
+
+            <div class="fallback-banner" id="camera-fallback">
+                ⚠️ الكاميرا غير مفعلة. تم تفعيل نظام محاكاة حركة اليد عبر الفأرة تلقائياً.
+            </div>
+
+            <div class="neural-stats">
+                <div class="stat-box">
+                    <span>دقة التتبع العصبي</span>
+                    <strong id="tracking-accuracy">0.0%</strong>
+                </div>
+                <div class="stat-box">
+                    <span>حالة الإيماءة</span>
+                    <strong id="gesture-state" style="color: var(--neon-magenta);">مفتوح</strong>
+                </div>
+            </div>
+
+            <div class="section-title" style="margin-top: 10px;">
+                <span>تعليمات الإيماءات</span>
+            </div>
+            <div class="help-tooltip">
+                <p><strong>1. التحليق باليد:</strong> يحرك المؤشر الهولوغرافي المضيء عبر فضاء العمل.</p>
+                <p><strong>2. قبضة اليد (Grab):</strong> ضم أصابعك معاً للإمساك بقطعة الأرض المقتطعة ونقلها.</p>
+                <p><strong>3. الإفلات (Drop):</strong> افتح يدك لإسقاط القطعة في أرخبيلك الجديد وتثبيتها.</p>
+            </div>
+        </div>
+
+        <!-- Footer: Personal Archipelago Inventory -->
+        <footer class="panel interactive">
+            <div style="font-size: 14px; font-weight: bold; color: var(--neon-cyan); margin-left: 20px; white-space: nowrap;">
+                مخزن الأصول (الأرخبيل):
+            </div>
+            <div class="inventory-slots" id="inventory-container">
+                <!-- Dynamic Slots -->
+            </div>
+        </footer>
+    </div>
+
+    <!-- Audio Synthesizer & Game Logic -->
+    <script>
+        // --- SOUND SYNTHESIZER (Web Audio API) ---
+        const AudioEngine = {
+            ctx: null,
+            init() {
+                this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+            },
+            playBeep(freq, duration, type = 'sine') {
+                if (!this.ctx) this.init();
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = type;
+                osc.frequency.setValueAtTime(freq, this.ctx.currentTime);
+                gain.gain.setValueAtTime(0.1, this.ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + duration);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start();
+                osc.stop(this.ctx.currentTime + duration);
+            },
+            playSuccess() {
+                this.playBeep(523.25, 0.15, 'triangle'); // C5
+                setTimeout(() => this.playBeep(659.25, 0.15, 'triangle'), 100); // E5
+                setTimeout(() => this.playBeep(783.99, 0.3, 'triangle'), 200); // G5
+            },
+            playClip() {
+                this.playBeep(150, 0.1, 'sawtooth');
+                setTimeout(() => this.playBeep(300, 0.1, 'sawtooth'), 50);
+                setTimeout(() => this.playBeep(600, 0.2, 'sine'), 100);
+            },
+            playGrab() {
+                this.playBeep(400, 0.08, 'sine');
+            },
+            playRelease() {
+                this.playBeep(250, 0.12, 'sine');
+            }
+        };
+
+        // --- GEOGRAPHICAL DATA (Simplified Vector Coordinates for recognizable countries) ---
+        const COUNTRIES_DATA = [
+            {
+                id: 'egypt',
+                name: 'جمهورية مصر العربية',
+                desc: 'شمال شرق أفريقيا - ملتقى القارات وعقدة النيل والشرق.',
+                color: 0xff3366,
+                points: [
+                    [25, 22], [34, 22], [34, 31], [31, 31], [25, 31.5]
+                ]
+            },
+            {
+                id: 'italy',
+                name: 'إيطاليا الهولوغرافية',
+                desc: 'شبه جزيرة على شكل حذاء بوت مميز في قلب البحر المتوسط.',
+                color: 0x33ff66,
+                points: [
+                    [10, 46], [12, 46], [14, 43], [18, 40], [18.5, 38], [16, 39], [14, 41], [12, 43]
+                ]
+            },
+            {
+                id: 'japan',
+                name: 'أرخبيل اليابان',
+                desc: 'سلسلة جزر بركانية رشيقة في المحيط الهادئ.',
+                color: 0x3366ff,
+                points: [
+                    [130, 31], [132, 33], [135, 35], [140, 38], [142, 43], [141, 43.5], [138, 38], [134, 34]
+                ]
+            },
+            {
+                id: 'madagascar',
+                name: 'مدغشقر المعزولة',
+                desc: 'جزيرة غنية بالتنوع الحيوي الفريد قبالة سواحل أفريقيا.',
+                color: 0xffaa00,
+                points: [
+                    [49, -12], [50, -16], [47, -25], [44, -25], [46, -16]
+                ]
+            },
+            {
+                id: 'ksa',
+                name: 'المملكة العربية السعودية',
+                desc: 'شبه الجزيرة العربية - مهد الحضارات وأكبر كتلة برية بالشرق.',
+                color: 0x00ffcc,
+                points: [
+                    [35, 29], [48, 30], [50, 26], [59, 24], [53, 16], [43, 12], [42, 16], [35, 20]
+                ]
+            }
+        ];
+
+        // --- THREE.JS ENGINE SETUP ---
+        const container = document.getElementById('webgl-container');
+        const scene = new THREE.Scene();
+        scene.fog = new THREE.FogExp2(0x020208, 0.015);
+
+        // Camera
+        const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(0, 35, 45);
+        camera.lookAt(0, 0, 0);
+
+        // Renderer
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        container.appendChild(renderer.domElement);
+
+        // Orbit Controls
+        const controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.05;
+        controls.maxPolarAngle = Math.PI / 2 - 0.05; // Don't go below ground
+        controls.minDistance = 15;
+        controls.maxDistance = 100;
+
+        // Lights
+        const ambientLight = new THREE.AmbientLight(0x0a0a1a, 2);
+        scene.add(ambientLight);
+
+        const dirLight = new THREE.DirectionalLight(0x00f3ff, 1.5);
+        dirLight.position.set(20, 40, 20);
+        dirLight.castShadow = true;
+        dirLight.shadow.mapSize.width = 2048;
+        dirLight.shadow.mapSize.height = 2048;
+        scene.add(dirLight);
+
+        const secondaryLight = new THREE.DirectionalLight(0xff0055, 0.8);
+        secondaryLight.position.set(-20, 30, -20);
+        scene.add(secondaryLight);
+
+        // Floor Grid (Holographic Workspace)
+        const gridHelper = new THREE.GridHelper(100, 50, 0x00f3ff, 0x112244);
+        gridHelper.position.y = -0.1;
+        scene.add(gridHelper);
+
+        // Add a glowing platform to represent the "Archipelago Zone" vs "Extraction Zone"
+        const extractionZoneGeo = new THREE.BoxGeometry(35, 0.2, 35);
+        const extractionZoneMat = new THREE.MeshPhongMaterial({
+            color: 0x003344,
+            transparent: true,
+            opacity: 0.4,
+            shininess: 100
+        });
+        const extractionPlatform = new THREE.Mesh(extractionZoneGeo, extractionZoneMat);
+        extractionPlatform.position.set(-22, 0, 0);
+        extractionPlatform.receiveShadow = true;
+        scene.add(extractionPlatform);
+
+        const archipelagoZoneGeo = new THREE.BoxGeometry(35, 0.2, 35);
+        const archipelagoZoneMat = new THREE.MeshPhongMaterial({
+            color: 0x440033,
+            transparent: true,
+            opacity: 0.4,
+            shininess: 100
+        });
+        const archipelagoPlatform = new THREE.Mesh(archipelagoZoneGeo, archipelagoZoneMat);
+        archipelagoPlatform.position.set(22, 0, 0);
+        archipelagoPlatform.receiveShadow = true;
+        scene.add(archipelagoPlatform);
+
+        // Zone Visual Dividers/Texts
+        function createZoneLabel(text, x, z, color) {
+            // Simplified floating marker
+            const markerGeo = new THREE.ConeGeometry(0.8, 2, 4);
+            const markerMat = new THREE.MeshBasicMaterial({ color: color, wireframe: true });
+            const marker = new THREE.Mesh(markerGeo, markerMat);
+            marker.position.set(x, 2, z);
+            scene.add(marker);
+            return marker;
+        }
+        const markerExtraction = createZoneLabel("منطقة الاستخراج", -22, 19, 0x00f3ff);
+        const markerArchipelago = createZoneLabel("أرخبيلك الخاص", 22, 19, 0xff0055);
+
+        // --- GAMEPLAY STATE & SETUP ---
+        let selectedCountryId = null;
+        const worldMapGroup = new THREE.Group();
+        const archipelagoGroup = new THREE.Group();
+        scene.add(worldMapGroup);
+        scene.add(archipelagoGroup);
+
+        const activeClips = []; // Floaties currently grabbed or placed
+        let grabbedObject = null;
+
+        // Custom country shape generator
+        function generateCountryMesh(data, isHologram = true) {
+            const shape = new THREE.Shape();
+            
+            // Normalize points around their local center
+            let avgX = 0, avgY = 0;
+            data.points.forEach(p => { avgX += p[0]; avgY += p[1]; });
+            avgX /= data.points.length;
+            avgY /= data.points.length;
+
+            data.points.forEach((p, idx) => {
+                const x = (p[0] - avgX) * 1.5; // Scale up
+                const y = (p[1] - avgY) * 1.5;
+                if (idx === 0) shape.moveTo(x, y);
+                else shape.lineTo(x, y);
+            });
+            shape.closePath();
+
+            const extrudeSettings = {
+                steps: 1,
+                depth: 1.2,
+                bevelEnabled: true,
+                bevelThickness: 0.2,
+                bevelSize: 0.2,
+                bevelSegments: 3
+            };
+
+            const geometry = new THREE.ExtrudeGeometry(shape, extrudeSettings);
+            geometry.center();
+            geometry.rotateX(-Math.PI / 2); // Lay flat
+
+            let material;
+            if (isHologram) {
+                material = new THREE.MeshPhongMaterial({
+                    color: data.color,
+                    emissive: data.color,
+                    emissiveIntensity: 0.3,
+                    transparent: true,
+                    opacity: 0.75,
+                    shininess: 80,
+                    flatShading: true
+                });
+            } else {
+                material = new THREE.MeshStandardMaterial({
+                    color: data.color,
+                    roughness: 0.2,
+                    metalness: 0.8,
+                    flatShading: true
+                });
+            }
+
+            const mesh = new THREE.Mesh(geometry, material);
+            mesh.castShadow = true;
+            mesh.receiveShadow = true;
+
+            // Add clean glowing wireframe edge
+            const geoEdges = new THREE.EdgesGeometry(geometry);
+            const lineMat = new THREE.LineBasicMaterial({ color: data.color, linewidth: 2 });
+            const wireframe = new THREE.LineSegments(geoEdges, lineMat);
+            mesh.add(wireframe);
+
+            mesh.userData = { 
+                id: data.id, 
+                name: data.name, 
+                color: data.color,
+                center: { x: avgX, y: avgY }
+            };
+
+            return mesh;
+        }
+
+        // Initialize World Map Zone
+        function initWorldMap() {
+            COUNTRIES_DATA.forEach((cData, idx) => {
+                const mesh = generateCountryMesh(cData, true);
+                // Arrange beautifully in the left "Extraction Zone"
+                const row = idx % 2;
+                const col = Math.floor(idx / 2);
+                mesh.position.set(-30 + col * 12, 1, -10 + row * 15);
+                worldMapGroup.add(mesh);
+            });
+        }
+        initWorldMap();
+
+        // Populate UI List
+        const countryListContainer = document.getElementById('country-list');
+        COUNTRIES_DATA.forEach(c => {
+            const card = document.createElement('div');
+            card.className = 'country-card';
+            card.dataset.id = c.id;
+            card.innerHTML = `
+                <h4>${c.name}</h4>
+                <p>${c.desc}</p>
+                <div style="position:absolute; bottom:5px; left:5px; width:12px; height:12px; border-radius:50%; background-color:#${c.color.toString(16)}"></div>
+            `;
+            card.addEventListener('click', () => selectCountry(c.id));
+            countryListContainer.appendChild(card);
+        });
+
+        function selectCountry(id) {
+            selectedCountryId = id;
+            document.querySelectorAll('.country-card').forEach(card => {
+                card.classList.toggle('selected', card.dataset.id === id);
+            });
+            
+            // Visual highlight in 3D
+            worldMapGroup.children.forEach(mesh => {
+                if (mesh.userData.id === id) {
+                    mesh.scale.set(1.2, 1.2, 1.2);
+                    mesh.material.emissiveIntensity = 0.8;
+                } else {
+                    mesh.scale.set(1, 1, 1);
+                    mesh.material.emissiveIntensity = 0.3;
+                }
+            });
+
+            AudioEngine.playBeep(440, 0.05);
+            updateInstruction(`تم تحديد ${COUNTRIES_DATA.find(c => c.id === id).name}. انقر الآن على "قص الأرض" لتحويلها لأصل ملموس!`);
+        }
+
+        // --- CLIPPING MECHANISM ---
+        const inventoryContainer = document.getElementById('inventory-container');
+        const inventorySlots = [];
+        const MAX_SLOTS = 6;
+
+        // Initialize empty inventory slots
+        for (let i = 0; i < MAX_SLOTS; i++) {
+            const slot = document.createElement('div');
+            slot.className = 'inventory-slot';
+            slot.innerHTML = `<span style="color:rgba(255,255,255,0.15); font-size:24px;">+</span>`;
+            inventoryContainer.appendChild(slot);
+            inventorySlots.push({ element: slot, filled: false, data: null });
+        }
+
+        document.getElementById('clip-btn').addEventListener('click', () => {
+            if (!selectedCountryId) {
+                updateInstruction("⚠️ يرجى اختيار دولة من القائمة أولاً لقصها!");
+                return;
+            }
+            clipCountry(selectedCountryId);
+        });
+
+        function clipCountry(id) {
+            // Find map mesh
+            const sourceMesh = worldMapGroup.children.find(m => m.userData.id === id);
+            if (!sourceMesh) return;
+
+            AudioEngine.playClip();
+
+            // Sci-fi disintegration animation & creation of floating asset
+            const targetData = COUNTRIES_DATA.find(c => c.id === id);
+            
+            // Create a physical asset mesh (non-hologram, solid)
+            const assetMesh = generateCountryMesh(targetData, false);
+            assetMesh.position.copy(sourceMesh.position);
+            assetMesh.position.y += 3; // Float up
+            scene.add(assetMesh);
+            activeClips.push(assetMesh);
+
+            // Animate source mesh shrinking & reappearing
+            const startScale = sourceMesh.scale.clone();
+            let animProgress = 0;
+            
+            function animateDisintegration() {
+                animProgress += 0.05;
+                if (animProgress <= 1) {
+                    sourceMesh.scale.set(
+                        startScale.x * (1 - animProgress),
+                        startScale.y * (1 - animProgress),
+                        startScale.z * (1 - animProgress)
+                    );
+                    requestAnimationFrame(animateDisintegration);
+                } else {
+                    // Respawn map hologram after a delay
+                    setTimeout(() => {
+                        sourceMesh.scale.set(1, 1, 1);
+                    }, 2000);
+                }
+            }
+            animateDisintegration();
+
+            // Add to Inventory Slots
+            const emptySlot = inventorySlots.find(s => !s.filled);
+            if (emptySlot) {
+                emptySlot.filled = true;
+                emptySlot.data = targetData;
+                emptySlot.element.className = 'inventory-slot filled';
+                emptySlot.element.innerHTML = `
+                    <div style="font-size:10px; text-align:center; color:var(--neon-cyan); font-weight:bold;">
+                        ${targetData.name.split(' ')[0]}
+                    </div>
+                `;
+                // Make slot interactive to spawn into archipelago
+                emptySlot.element.onclick = () => {
+                    spawnToCursor(targetData);
+                };
+            }
+
+            updateInstruction(`نجاح! تم قص ${targetData.name} وتحويلها لأصل عائم. استخدم الماوس أو يدك لسحبها للأرخبيل!`);
+            
+            // Auto-grab the newly created asset
+            grabObject = assetMesh;
+        }
+
+        function spawnToCursor(data) {
+            AudioEngine.playBeep(600, 0.1);
+            const mesh = generateCountryMesh(data, false);
+            mesh.position.set(0, 5, 0);
+            scene.add(mesh);
+            activeClips.push(mesh);
+            grabObject = mesh;
+            updateInstruction(`تم سحب ${data.name} من المخزن. ضعها في الأرخبيل الأيمن!`);
+        }
+
+        function updateInstruction(text) {
+            document.getElementById('instruction-text').innerText = text;
+        }
+
+        // --- NEURAL INTERFACE (MediaPipe Hand Tracking) ---
+        const videoElement = document.getElementById('webcam');
+        const canvasElement = document.getElementById('hand-canvas');
+        const canvasCtx = canvasElement.getContext('2d');
+        const neuralStatusBadge = document.getElementById('neural-status');
+        const neuralCursor = document.getElementById('neural-cursor');
+        const trackingAccuracyText = document.getElementById('tracking-accuracy');
+        const gestureStateText = document.getElementById('gesture-state');
+        const cameraFallback = document.getElementById('camera-fallback');
+
+        let cursorX = window.innerWidth / 2;
+        let cursorY = window.innerHeight / 2;
+        let isGrabbing = false;
+        let neuralControlActive = false;
+
+        // Setup MediaPipe Hands
+        const hands = new Hands({
+            locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+        });
+
+        hands.setOptions({
+            maxNumHands: 1,
+            modelComplexity: 1,
+            minDetectionConfidence: 0.6,
+            minTrackingConfidence: 0.6
+        });
+
+        hands.onResults(onHandResults);
+
+        const cameraUtils = new Camera(videoElement, {
+            onFrame: async () => {
+                await hands.send({ image: videoElement });
+            },
+            width: 320,
+            height: 240
+        });
+
+        // Start Camera
+        cameraUtils.start()
+            .then(() => {
+                neuralControlActive = true;
+                neuralStatusBadge.classList.add('active');
+                neuralStatusBadge.querySelector('span').innerText = "الاتصال العصبي نشط";
+                cameraFallback.style.display = 'none';
+                AudioEngine.playSuccess();
+            })
+            .catch(err => {
+                console.warn("Camera access denied or unavailable. Using mouse emulation.", err);
+                cameraFallback.style.display = 'block';
+                // Keep mouse emulation running
+            });
+
+        function onHandResults(results) {
+            // Clear canvas
+            canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+            
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                const landmarks = results.multiHandLandmarks[0];
+                
+                // Draw hand landmarks for visual feedback
+                drawHandSkeleton(landmarks);
+
+                // Track Index Finger Tip (Landmark 8) for cursor movement
+                const indexTip = landmarks[8];
+                const thumbTip = landmarks[4];
+                
+                // Scale coordinates to screen size (with mirroring)
+                cursorX = (1 - indexTip.x) * window.innerWidth;
+                cursorY = indexTip.y * window.innerHeight;
+
+                // Update Virtual Cursor Position
+                neuralCursor.style.left = `${cursorX}px`;
+                neuralCursor.style.top = `${cursorY}px`;
+
+                // Gesture Recognition: Pinch/Grab detection (Distance between Index Tip & Thumb Tip)
+                const dx = indexTip.x - thumbTip.x;
+                const dy = indexTip.y - thumbTip.y;
+                const dz = indexTip.z - thumbTip.z;
+                const distance = Math.sqrt(dx*dx + dy*dy + dz*dz);
+
+                // Grab Threshold
+                const GRAB_THRESHOLD = 0.06;
+                const grabActive = distance < GRAB_THRESHOLD;
+
+                if (grabActive && !isGrabbing) {
+                    isGrabbing = true;
+                    neuralCursor.classList.add('grabbing');
+                    gestureStateText.innerText = "قبضة (إمساك)";
+                    gestureStateText.style.color = "var(--neon-magenta)";
+                    handleGrabStart();
+                } else if (!grabActive && isGrabbing) {
+                    isGrabbing = false;
+                    neuralCursor.classList.remove('grabbing');
+                    gestureStateText.innerText = "مفتوح";
+                    gestureStateText.style.color = "var(--neon-green)";
+                    handleGrabEnd();
+                }
+
+                // Update UI Stats
+                const accuracy = Math.round((1 - results.multiHandLandmarks[0][0].z) * 100);
+                trackingAccuracyText.innerText = `${Math.min(100, Math.max(0, accuracy))}%`;
+            } else {
+                trackingAccuracyText.innerText = "0.0%";
+            }
+        }
+
+        function drawHandSkeleton(landmarks) {
+            canvasCtx.save();
+            canvasCtx.strokeStyle = '#00f3ff';
+            canvasCtx.lineWidth = 3;
+            canvasCtx.fillStyle = '#ff0055';
+
+            // Simple line drawing between crucial nodes
+            const connections = [
+                [0, 1], [1, 2], [2, 3], [3, 4], // Thumb
+                [0, 5], [5, 6], [6, 7], [7, 8], // Index
+                [0, 17], [5, 9], [9, 13], [13, 17], // Palm
+                [9, 10], [10, 11], [11, 12], // Middle
+                [13, 14], [14, 15], [15, 16], // Ring
+                [17, 18], [18, 19], [19, 20] // Pinky
+            ];
+
+            connections.forEach(([i1, i2]) => {
+                const pt1 = landmarks[i1];
+                const pt2 = landmarks[i2];
+                canvasCtx.beginPath();
+                canvasCtx.moveTo(pt1.x * canvasElement.width, pt1.y * canvasElement.height);
+                canvasCtx.lineTo(pt2.x * canvasElement.width, pt2.y * canvasElement.height);
+                canvasCtx.stroke();
+            });
+
+            landmarks.forEach(pt => {
+                canvasCtx.beginPath();
+                canvasCtx.arc(pt.x * canvasElement.width, pt.y * canvasElement.height, 4, 0, 2*Math.PI);
+                canvasCtx.fill();
+            });
+            canvasCtx.restore();
+        }
+
+        // --- MOUSE EMULATION FALLBACK ---
+        window.addEventListener('mousemove', (e) => {
+            if (!neuralControlActive) {
+                cursorX = e.clientX;
+                cursorY = e.clientY;
+                neuralCursor.style.left = `${cursorX}px`;
+                neuralCursor.style.top = `${cursorY}px`;
+            }
+        });
+
+        window.addEventListener('mousedown', (e) => {
+            if (!neuralControlActive && e.target.closest('.interactive') === null) {
+                isGrabbing = true;
+                neuralCursor.classList.add('grabbing');
+                handleGrabStart();
+            }
+        });
+
+        window.addEventListener('mouseup', () => {
+            if (!neuralControlActive && isGrabbing) {
+                isGrabbing = false;
+                neuralCursor.classList.remove('grabbing');
+                handleGrabEnd();
+            }
+        });
+
+        // --- DRAG & DROP PHYSICS/LOGIC ---
+        const raycaster = new THREE.Raycaster();
+        const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0); // Flat plane to drag along
+
+        function handleGrabStart() {
+            AudioEngine.playGrab();
+
+            // Cast ray to find if we grabbed an active floating asset
+            const mouseCoords = new THREE.Vector2(
+                (cursorX / window.innerWidth) * 2 - 1,
+                -(cursorY / window.innerHeight) * 2 + 1
+            );
+            raycaster.setFromCamera(mouseCoords, camera);
+            const intersects = raycaster.intersectObjects(activeClips, true);
+
+            if (intersects.length > 0) {
+                // Find top parent that is in activeClips
+                let obj = intersects[0].object;
+                while (obj.parent && !activeClips.includes(obj)) {
+                    obj = obj.parent;
+                }
+                grabbedObject = obj;
+                controls.enabled = false; // Disable orbit controls while dragging
+            }
+        }
+
+        function handleGrabEnd() {
+            if (grabbedObject) {
+                AudioEngine.playRelease();
+
+                // Check if dropped inside the Archipelago Zone (X > 2)
+                if (grabbedObject.position.x > 2) {
+                    // Snap beautiful to "grid" height and establish as part of Archipelago
+                    grabbedObject.position.y = 1;
+                    
+                    // Sparkle effect
+                    createDropSparkles(grabbedObject.position);
+                    updateInstruction(`رائع! تم دمج ${grabbedObject.userData.name} في أرخبيلك الفريد بنجاح.`);
+                } else {
+                    // Returned back or dropped outside
+                    updateInstruction("تلميح: اسحب القطعة إلى الجانب الأيمن (منطقة الأرخبيل) لتثبيتها!");
+                }
+                grabbedObject = null;
+            }
+            controls.enabled = true;
+        }
+
+        // Particle effect on successful drop
+        function createDropSparkles(pos) {
+            const particleCount = 30;
+            const geom = new THREE.BufferGeometry();
+            const positions = [];
+            const velocities = [];
+
+            for (let i = 0; i < particleCount; i++) {
+                positions.push(pos.x, pos.y + 0.5, pos.z);
+                velocities.push(
+                    (Math.random() - 0.5) * 0.5,
+                    Math.random() * 0.5 + 0.2,
+                    (Math.random() - 0.5) * 0.5
+                );
+            }
+
+            geom.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+            const mat = new THREE.PointsMaterial({
+                color: 0xff0055,
+                size: 0.6,
+                transparent: true,
+                opacity: 1,
+                blending: THREE.AdditiveBlending
+            });
+
+            const pSystem = new THREE.Points(geom, mat);
+            scene.add(pSystem);
+
+            let life = 1.0;
+            function animParticles() {
+                life -= 0.02;
+                const posArr = pSystem.geometry.attributes.position.array;
+                for (let i = 0; i < particleCount; i++) {
+                    posArr[i*3] += velocities[i*3];
+                    posArr[i*3+1] += velocities[i*3+1];
+                    posArr[i*3+2] += velocities[i*3+2];
+                    velocities[i*3+1] -= 0.01; // Gravity
+                }
+                pSystem.geometry.attributes.position.needsUpdate = true;
+                pSystem.material.opacity = life;
+
+                if (life > 0) {
+                    requestAnimationFrame(animParticles);
+                } else {
+                    scene.remove(pSystem);
+                    pSystem.geometry.dispose();
+                    pSystem.material.dispose();
+                }
+            }
+            animParticles();
+        }
+
+        // Drag action loop
+        function updateDrag() {
+            if (grabbedObject) {
+                const mouseCoords = new THREE.Vector2(
+                    (cursorX / window.innerWidth) * 2 - 1,
+                    -(cursorY / window.innerHeight) * 2 + 1
+                );
+                raycaster.setFromCamera(mouseCoords, camera);
+                
+                const intersection = new THREE.Vector3();
+                raycaster.ray.intersectPlane(plane, intersection);
+                
+                // Smoothly slide asset to intersection point
+                grabbedObject.position.x = THREE.MathUtils.lerp(grabbedObject.position.x, intersection.x, 0.2);
+                grabbedObject.position.z = THREE.MathUtils.lerp(grabbedObject.position.z, intersection.z, 0.2);
+                grabbedObject.position.y = THREE.MathUtils.lerp(grabbedObject.position.y, 4.0, 0.2); // Hover height
+                
+                // Gentle rotation while dragging
+                grabbedObject.rotation.y += 0.02;
+            }
+        }
+
+        // --- GAME LOOP ---
+        const clock = new THREE.Clock();
+
+        function animate() {
+            requestAnimationFrame(animate);
+
+            const elapsedTime = clock.getElapsedTime();
+
+            // Rotate markers slowly
+            markerExtraction.rotation.y = elapsedTime * 0.5;
+            markerArchipelago.rotation.y = -elapsedTime * 0.5;
+
+            // Animate floating islands slightly (idle hover)
+            worldMapGroup.children.forEach((mesh, idx) => {
+                if (mesh !== grabbedObject) {
+                    mesh.position.y = 1 + Math.sin(elapsedTime * 1.5 + idx) * 0.15;
+                }
+            });
+
+            activeClips.forEach((mesh, idx) => {
+                if (mesh !== grabbedObject && mesh.position.y > 1.5) {
+                    // Hover effect for unplaced clipped assets
+                    mesh.position.y = 3 + Math.sin(elapsedTime * 2 + idx) * 0.25;
+                }
+            });
+
+            // Handle Dragging
+            updateDrag();
+
+            // Controls update
+            controls.update();
+
+            // Render
+            renderer.render(scene, camera);
+        }
+
+        // --- WINDOW RESIZE ---
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            
+            // Adjust canvas sizes
+            canvasElement.width = videoElement.clientWidth;
+            canvasElement.height = videoElement.clientHeight;
+        });
+
+        // Start loop
+        animate();
+
+        // Sync initial canvas size
+        setTimeout(() => {
+            canvasElement.width = videoElement.clientWidth || 320;
+            canvasElement.height = videoElement.clientHeight || 240;
+        }, 1000);
+
+    </script>
+</body>
+</html>
