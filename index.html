@@ -1,3 +1,5 @@
+
+
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
@@ -40,6 +42,10 @@
     
     <!-- FontAwesome Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <!-- MediaPipe Dependencies -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
 
     <style>
         body {
@@ -173,16 +179,28 @@
                     <span class="text-xs font-bold text-slate-300 flex items-center gap-2">
                         <i class="fa-solid fa-brain text-brand-gold"></i> طبقة التحكم العصبي (MediaPipe)
                     </span>
-                    <span class="text-[9px] bg-brand-olive/40 border border-brand-olive text-emerald-400 px-1.5 py-0.5 rounded">جاهز للتوصيل</span>
+                    <span id="neural-status-badge" class="text-[9px] bg-slate-800 border border-slate-700 text-slate-400 px-1.5 py-0.5 rounded">غير نشط</span>
                 </div>
-                <div class="bg-brand-dark/60 rounded-lg p-3 border border-slate-800 flex items-center gap-3">
-                    <div class="relative flex h-3 w-3">
-                        <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-brand-gold opacity-75"></span>
-                        <span class="relative inline-flex rounded-full h-3 w-3 bg-brand-gold"></span>
+                <div class="bg-brand-dark/60 rounded-lg p-3 border border-slate-800 flex flex-col gap-3">
+                    <div class="flex items-center gap-3">
+                        <div class="relative flex h-3 w-3">
+                            <span id="neural-ping" class="absolute inline-flex h-full w-full rounded-full bg-slate-600 opacity-75"></span>
+                            <span id="neural-dot" class="relative inline-flex rounded-full h-3 w-3 bg-slate-500"></span>
+                        </div>
+                        <div id="neural-instruction" class="text-[11px] text-slate-400 leading-relaxed">
+                            اضغط على الزر أدناه لتفعيل التحكم بالإيماءات عبر كاميرا الويب.
+                        </div>
                     </div>
-                    <div class="text-[11px] text-slate-400 leading-relaxed">
-                        تمت تهيئة معمارية التحكم بالإيماءات. بانتظار تفعيل الكاميرا والإصدار V2 لدمج التتبع الحركي لليد بشكل كامل.
+
+                    <!-- Video Preview Container -->
+                    <div id="video-container" class="hidden relative w-full h-28 rounded-lg overflow-hidden border border-brand-gold/30 bg-black">
+                        <video id="webcam" class="w-full h-full object-cover scale-x-[-1]" autoplay playsinline></video>
+                        <div class="absolute bottom-1 right-1 bg-brand-dark/80 px-1.5 py-0.5 rounded text-[8px] text-brand-gold">بث حي للكاميرا</div>
                     </div>
+
+                    <button id="btn-toggle-camera" onclick="toggleNeuralControl()" class="w-full bg-brand-gold hover:bg-brand-goldHover text-brand-dark font-bold text-xs py-2 rounded-lg transition-all flex items-center justify-center gap-2">
+                        <i class="fa-solid fa-camera"></i> تفعيل الكاميرا والتحكم العصبي
+                    </button>
                 </div>
             </div>
         </aside>
@@ -196,6 +214,12 @@
         <main class="flex-1 relative h-full">
             <!-- Leaflet Container -->
             <div id="map" class="w-full h-full z-10"></div>
+
+            <!-- Neural Pointer (Visual Touch-to-Air Indicator) -->
+            <div id="neural-pointer" class="absolute w-8 h-8 border-2 border-brand-gold rounded-full pointer-events-none z-[9999] hidden -translate-x-1/2 -translate-y-1/2 shadow-lg shadow-brand-gold/50 transition-all duration-75">
+                <div class="w-3 h-3 bg-brand-gold rounded-full absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 animate-ping"></div>
+                <div class="w-1.5 h-1.5 bg-white rounded-full absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2"></div>
+            </div>
 
             <!-- Floating Map Mode Controller (Top-Left) -->
             <div class="absolute top-4 left-4 z-[999] flex flex-col gap-2">
@@ -256,6 +280,24 @@
         let currentLayer = 'dark';
         let exploredPlaces = [];
         let cache = JSON.parse(localStorage.getItem('reality_map_cache')) || {};
+
+        // MediaPipe Neural Mapping States
+        let neuralActive = false;
+        let camera = null;
+        let hands = null;
+        let smoothX = 0;
+        let smoothY = 0;
+        const smoothingAlpha = 0.25; // Smoothing factor for visual stability
+        
+        // Gesture Tracking States
+        let isPanning = false;
+        let lastX = 0;
+        let lastY = 0;
+        let lastPinchDist = null;
+        let zoomCooldown = false;
+        let isPinchingForTap = false;
+        let tapStartTime = 0;
+        let tapCooldown = false;
 
         // Base Map Providers (Light, Dark, Terrain)
         const mapProviders = {
@@ -624,6 +666,199 @@
         function updateCacheCounter() {
             const count = Object.keys(cache).length;
             document.getElementById('cache-count').innerText = `${count} مواقع`;
+        }
+
+        // --- Touch-to-Air Neural Mapping (MediaPipe Hands Engine) ---
+        function toggleNeuralControl() {
+            const btn = document.getElementById('btn-toggle-camera');
+            const videoContainer = document.getElementById('video-container');
+            const statusBadge = document.getElementById('neural-status-badge');
+            const instruction = document.getElementById('neural-instruction');
+            const pointerEl = document.getElementById('neural-pointer');
+
+            if (!neuralActive) {
+                btn.innerHTML = `<i class="fa-solid fa-circle-notch animate-spin"></i> جاري التهيئة...`;
+                
+                // Initialize MediaPipe Hands
+                hands = new Hands({
+                    locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+                });
+
+                hands.setOptions({
+                    maxNumHands: 1,
+                    modelComplexity: 1,
+                    minDetectionConfidence: 0.6,
+                    minTrackingConfidence: 0.6
+                });
+
+                hands.onResults(onHandResults);
+
+                const videoElement = document.getElementById('webcam');
+                camera = new Camera(videoElement, {
+                    onFrame: async () => {
+                        await hands.send({ image: videoElement });
+                    },
+                    width: 320,
+                    height: 240
+                });
+
+                camera.start().then(() => {
+                    neuralActive = true;
+                    videoContainer.classList.remove('hidden');
+                    statusBadge.innerText = 'نشط';
+                    statusBadge.className = 'text-[9px] bg-brand-olive/40 border border-brand-olive text-emerald-400 px-1.5 py-0.5 rounded';
+                    document.getElementById('neural-ping').className = 'animate-ping absolute inline-flex h-full w-full rounded-full bg-brand-gold opacity-75';
+                    document.getElementById('neural-dot').className = 'relative inline-flex rounded-full h-3 w-3 bg-brand-gold';
+                    instruction.innerText = 'التحكم العصبي نشط! استخدم السبابة للتحريك، واقرص للتكبير، واضغط في الهواء للاستعلام.';
+                    
+                    btn.innerHTML = `<i class="fa-solid fa-video-slash"></i> تعطيل التحكم العصبي`;
+                    btn.className = "w-full bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs py-2 rounded-lg transition-all flex items-center justify-center gap-2";
+                }).catch(err => {
+                    console.error(err);
+                    alert('فشل تشغيل الكاميرا. يرجى التحقق من صلاحيات المتصفح.');
+                    btn.innerHTML = `<i class="fa-solid fa-camera"></i> تفعيل الكاميرا والتحكم العصبي`;
+                });
+
+            } else {
+                // Deactivate Neural Control
+                if (camera) {
+                    camera.stop();
+                }
+                neuralActive = false;
+                videoContainer.classList.add('hidden');
+                pointerEl.classList.add('hidden');
+                
+                statusBadge.innerText = 'غير نشط';
+                statusBadge.className = 'text-[9px] bg-slate-800 border border-slate-700 text-slate-400 px-1.5 py-0.5 rounded';
+                document.getElementById('neural-ping').className = 'absolute inline-flex h-full w-full rounded-full bg-slate-600 opacity-75';
+                document.getElementById('neural-dot').className = 'relative inline-flex rounded-full h-3 w-3 bg-slate-500';
+                instruction.innerText = 'اضغط على الزر أدناه لتفعيل التحكم بالإيماءات عبر كاميرا الويب.';
+                
+                btn.innerHTML = `<i class="fa-solid fa-camera"></i> تفعيل الكاميرا والتحكم العصبي`;
+                btn.className = "w-full bg-brand-gold hover:bg-brand-goldHover text-brand-dark font-bold text-xs py-2 rounded-lg transition-all flex items-center justify-center gap-2";
+            }
+        }
+
+        // --- MediaPipe Hand Results Processor ---
+        function onHandResults(results) {
+            const pointerEl = document.getElementById('neural-pointer');
+            
+            if (!results.multiHandLandmarks || results.multiHandLandmarks.length === 0) {
+                pointerEl.classList.add('hidden');
+                isPanning = false;
+                lastPinchDist = null;
+                return;
+            }
+
+            const landmarks = results.multiHandLandmarks[0];
+            const mapContainer = document.getElementById('map');
+            const rect = mapContainer.getBoundingClientRect();
+
+            // Primary Pointer is mapped to the Index Finger Tip (Landmark 8)
+            const indexTip = landmarks[8];
+            const targetX = (1 - indexTip.x) * rect.width; // Mirroring X for natural interaction
+            const targetY = indexTip.y * rect.height;
+
+            // Exponential Moving Average (EMA) for Visual Stability
+            if (smoothX === 0 && smoothY === 0) {
+                smoothX = targetX;
+                smoothY = targetY;
+            } else {
+                smoothX = smoothX * (1 - smoothingAlpha) + targetX * smoothingAlpha;
+                smoothY = smoothY * (1 - smoothingAlpha) + targetY * smoothingAlpha;
+            }
+
+            // Update Neural Pointer Position
+            pointerEl.style.left = `${smoothX}px`;
+            pointerEl.style.top = `${smoothY}px`;
+            pointerEl.classList.remove('hidden');
+
+            // Finger State Detection
+            const isIndexUp = landmarks[8].y < landmarks[6].y;
+            const isMiddleUp = landmarks[12].y < landmarks[10].y;
+            const isRingUp = landmarks[16].y < landmarks[14].y;
+            const isPinkyUp = landmarks[20].y < landmarks[18].y;
+
+            // Euclidean distance between Thumb Tip (4) and Index Tip (8)
+            const pinchDist = Math.hypot(landmarks[4].x - landmarks[8].x, landmarks[4].y - landmarks[8].y);
+
+            // 1. Air Tap Detection (Quick Pinch & Release)
+            if (pinchDist < 0.03) {
+                pointerEl.style.borderColor = '#ef4444'; // Rose color for active pinch
+                pointerEl.style.transform = 'translate(-50%, -50%) scale(0.8)';
+                if (!isPinchingForTap) {
+                    isPinchingForTap = true;
+                    tapStartTime = Date.now();
+                }
+            } else {
+                pointerEl.style.transform = 'translate(-50%, -50%) scale(1)';
+                if (isPinchingForTap) {
+                    const duration = Date.now() - tapStartTime;
+                    if (duration < 400 && !tapCooldown) {
+                        // Trigger Air Tap!
+                        const latlng = map.containerPointToLatLng([smoothX, smoothY]);
+                        onMapClick({ latlng: latlng });
+                        triggerTapCooldown();
+                    }
+                    isPinchingForTap = false;
+                }
+            }
+
+            // 2. One-Finger Pan (Index Up, others down, not pinching)
+            if (isIndexUp && !isMiddleUp && !isRingUp && !isPinkyUp && pinchDist > 0.04) {
+                pointerEl.style.borderColor = '#10b981'; // Emerald color for panning
+                if (!isPanning) {
+                    isPanning = true;
+                    lastX = smoothX;
+                    lastY = smoothY;
+                } else {
+                    const dx = smoothX - lastX;
+                    const dy = smoothY - lastY;
+                    // Pan map smoothly by delta
+                    map.panBy([-dx, -dy], { animate: false });
+                    lastX = smoothX;
+                    lastY = smoothY;
+                }
+            } else {
+                isPanning = false;
+            }
+
+            // 3. Pinch Zoom (Index and Middle are up, distance between Thumb and Index controls zoom)
+            if (isIndexUp && isMiddleUp && !isRingUp && !isPinkyUp) {
+                pointerEl.style.borderColor = '#3a86ff'; // Blue color for zoom mode
+                if (lastPinchDist === null) {
+                    lastPinchDist = pinchDist;
+                } else {
+                    const ratio = pinchDist / lastPinchDist;
+                    if (!zoomCooldown) {
+                        if (ratio > 1.25) {
+                            map.zoomIn();
+                            triggerZoomCooldown();
+                        } else if (ratio < 0.75) {
+                            map.zoomOut();
+                            triggerZoomCooldown();
+                        }
+                    }
+                }
+            } else {
+                lastPinchDist = null;
+            }
+
+            // Default Pointer Color (Gold)
+            if (!isPanning && pinchDist >= 0.03 && !(isIndexUp && isMiddleUp && !isRingUp && !isPinkyUp)) {
+                pointerEl.style.borderColor = '#d4af37';
+            }
+        }
+
+        // Cooldown Helpers to prevent rapid firing of map actions
+        function triggerZoomCooldown() {
+            zoomCooldown = true;
+            setTimeout(() => { zoomCooldown = false; }, 800);
+        }
+
+        function triggerTapCooldown() {
+            tapCooldown = true;
+            setTimeout(() => { tapCooldown = false; }, 1000);
         }
 
         // Initialize Map on window load
