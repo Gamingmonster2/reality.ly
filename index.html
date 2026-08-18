@@ -1,5 +1,3 @@
-
-
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
@@ -433,7 +431,7 @@
                 // Extract best available name
                 const address = geoData.address || {};
                 const locationName = address.country || address.state || address.city || address.town || "موقع مجهول";
-                const detailedName = geoData.display_name.split(',').slice(0, 2).join(', ');
+                const detailedName = geoData.display_name ? geoData.display_name.split(',').slice(0, 2).join(', ') : "موقع مجهول";
 
                 // Step 2: Query Wikipedia Summary (Arabic)
                 const wikiData = await fetchWikipediaSummary(locationName);
@@ -645,6 +643,7 @@
             });
         }
 
+        // --- Clear Explored List ---
         function clearExploredList() {
             exploredPlaces = [];
             saveExploredToStorage();
