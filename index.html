@@ -71,6 +71,16 @@
         .pulse-gold {
             animation: pulse-gold 2s infinite ease-in-out;
         }
+
+        /* High-tech Dark Mode for OpenStreetMap (100% Free, Zero API Keys) */
+        .leaflet-container {
+            background-color: #05070c !important;
+        }
+        .map-tiles-dark,
+        .map-tiles-dark .leaflet-tile,
+        img.leaflet-tile.map-tiles-dark {
+            filter: invert(100%) hue-rotate(180deg) brightness(95%) contrast(90%);
+        }
     </style>
 </head>
 <body class="h-screen w-screen overflow-hidden flex flex-col text-slate-100">
@@ -125,6 +135,50 @@
                     <button onclick="triggerSearch()" class="absolute left-2 top-1.5 bg-brand-gold text-brand-dark hover:bg-brand-goldHover text-xs font-bold px-2.5 py-1 rounded transition-all">
                         انطلق
                     </button>
+                </div>
+            </div>
+
+            <!-- Quick Country Navigation Dropdown -->
+            <div class="p-4 border-b border-brand-gold/10">
+                <label class="text-xs text-brand-gold font-bold block mb-2">
+                    <i class="fa-solid fa-globe-africa"></i> الانتقال السريع إلى دولة
+                </label>
+                <div class="relative">
+                    <select id="country-select" onchange="flyToCapital(this.value)"
+                        class="w-full appearance-none bg-brand-blue/50 border border-slate-700 rounded-lg py-2 px-3 pr-9 text-sm focus:outline-none focus:border-brand-gold text-white transition-all cursor-pointer">
+                        <option value="" class="bg-brand-dark">— اختر دولة أو عاصمة —</option>
+                        <optgroup label="المنطقة العربية وأفريقيا" class="bg-brand-dark text-brand-gold">
+                            <option value="32.9025,13.1800,10,طرابلس - ليبيا 🇱🇾"  class="bg-brand-dark text-white">🇱🇾 ليبيا — طرابلس</option>
+                            <option value="30.0444,31.2357,10,القاهرة - مصر 🇪🇬"    class="bg-brand-dark text-white">🇪🇬 مصر — القاهرة</option>
+                            <option value="36.7372,3.0865,10,الجزائر - الجزائر 🇩🇿"  class="bg-brand-dark text-white">🇩🇿 الجزائر — الجزائر العاصمة</option>
+                            <option value="33.9716,9.5375,10,تونس - تونس 🇹🇳"       class="bg-brand-dark text-white">🇹🇳 تونس — تونس</option>
+                            <option value="33.9865,-6.8498,10,الرباط - المغرب 🇲🇦"  class="bg-brand-dark text-white">🇲🇦 المغرب — الرباط</option>
+                            <option value="15.5007,32.5599,10,الخرطوم - السودان 🇸🇩" class="bg-brand-dark text-white">🇸🇩 السودان — الخرطوم</option>
+                            <option value="24.6877,46.7219,10,الرياض - السعودية 🇸🇦" class="bg-brand-dark text-white">🇸🇦 السعودية — الرياض</option>
+                            <option value="33.3152,44.3661,10,بغداد - العراق 🇮🇶"   class="bg-brand-dark text-white">🇮🇶 العراق — بغداد</option>
+                            <option value="33.8869,35.5131,10,بيروت - لبنان 🇱🇧"    class="bg-brand-dark text-white">🇱🇧 لبنان — بيروت</option>
+                            <option value="9.0579,7.4951,10,أبوجا - نيجيريا 🇳🇬"    class="bg-brand-dark text-white">🇳🇬 نيجيريا — أبوجا</option>
+                        </optgroup>
+                        <optgroup label="أوروبا" class="bg-brand-dark text-brand-gold">
+                            <option value="48.8566,2.3522,10,باريس - فرنسا 🇫🇷"     class="bg-brand-dark text-white">🇫🇷 فرنسا — باريس</option>
+                            <option value="51.5074,-0.1278,10,لندن - المملكة المتحدة 🇬🇧" class="bg-brand-dark text-white">🇬🇧 المملكة المتحدة — لندن</option>
+                            <option value="52.5200,13.4050,10,برلين - ألمانيا 🇩🇪"   class="bg-brand-dark text-white">🇩🇪 ألمانيا — برلين</option>
+                            <option value="40.4168,-3.7038,10,مدريد - إسبانيا 🇪🇸"  class="bg-brand-dark text-white">🇪🇸 إسبانيا — مدريد</option>
+                            <option value="55.7558,37.6173,10,موسكو - روسيا 🇷🇺"    class="bg-brand-dark text-white">🇷🇺 روسيا — موسكو</option>
+                        </optgroup>
+                        <optgroup label="آسيا والمحيط الهادي" class="bg-brand-dark text-brand-gold">
+                            <option value="35.6762,139.6503,10,طوكيو - اليابان 🇯🇵"  class="bg-brand-dark text-white">🇯🇵 اليابان — طوكيو</option>
+                            <option value="39.9042,116.4074,8,بكين - الصين 🇨🇳"      class="bg-brand-dark text-white">🇨🇳 الصين — بكين</option>
+                            <option value="28.6139,77.2090,10,نيودلهي - الهند 🇮🇳"   class="bg-brand-dark text-white">🇮🇳 الهند — نيودلهي</option>
+                            <option value="-35.2809,149.1300,10,كانبيرا - أستراليا 🇦🇺" class="bg-brand-dark text-white">🇦🇺 أستراليا — كانبيرا</option>
+                            <option value="1.3521,103.8198,11,سنغافورة 🇸🇬"           class="bg-brand-dark text-white">🇸🇬 سنغافورة — سنغافورة</option>
+                        </optgroup>
+                        <optgroup label="الأمريكتان" class="bg-brand-dark text-brand-gold">
+                            <option value="38.9072,-77.0369,10,واشنطن - الولايات المتحدة 🇺🇸" class="bg-brand-dark text-white">🇺🇸 الولايات المتحدة — واشنطن</option>
+                            <option value="-15.7801,-47.9292,10,برازيليا - البرازيل 🇧🇷" class="bg-brand-dark text-white">🇧🇷 البرازيل — برازيليا</option>
+                        </optgroup>
+                    </select>
+                    <i class="fa-solid fa-chevron-down absolute left-3 top-3 text-brand-gold text-xs pointer-events-none"></i>
                 </div>
             </div>
 
@@ -276,17 +330,18 @@
         let tapStartTime = 0;
         let tapCooldown = false;
 
-        // Base Map Providers (Light, Dark, Terrain)
+        // Base Map Providers (Light, Dark, Terrain) - 100% Free & Open Source (No API Keys Required)
         const mapProviders = {
-            dark: L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
-                subdomains: 'abcd',
-                maxZoom: 20
+            dark: L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+                subdomains: 'abc',
+                maxZoom: 19,
+                className: 'map-tiles-dark'
             }),
-            light: L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
-                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
-                subdomains: 'abcd',
-                maxZoom: 20
+            light: L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+                subdomains: 'abc',
+                maxZoom: 19
             }),
             terrain: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
                 attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community',
@@ -351,6 +406,29 @@
                 animate: true,
                 duration: 1.5
             });
+        }
+
+        // --- Quick Navigation: Fly to Country Capital from Dropdown ---
+        function flyToCapital(value) {
+            if (!value) return;
+            const parts = value.split(',');
+            if (parts.length < 3) return;
+            const lat   = parseFloat(parts[0]);
+            const lng   = parseFloat(parts[1]);
+            const zoom  = parseInt(parts[2]);
+            const label = parts.slice(3).join(',');
+            map.flyTo([lat, lng], zoom, { animate: true, duration: 1.8 });
+            // Show a brief popup at the capital
+            const popup = L.popup({ className: '' })
+                .setLatLng([lat, lng])
+                .setContent(`<div class="text-center"><i class="fa-solid fa-location-dot text-brand-gold"></i> <strong>${label}</strong></div>`)
+                .openOn(map);
+            setTimeout(() => map.closePopup(popup), 3000);
+            // Reset the select to placeholder after navigation
+            setTimeout(() => {
+                const sel = document.getElementById('country-select');
+                if (sel) sel.value = '';
+            }, 500);
         }
 
         // --- Sidebar Toggling ---
